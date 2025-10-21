@@ -7,6 +7,18 @@
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script>
+        window.MathJax = {
+            tex: {
+                inlineMath: [['$', '$']],
+                displayMath: [['$$', '$$']]
+            },
+            svg: {
+                fontCache: 'global'
+            }
+        };
+    </script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js"></script>
     <style>
         body {
             margin: 0;
@@ -39,7 +51,7 @@
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useRef } = React;
+        const { useState, useRef, useEffect } = React;
 
         const COLORS = ['#ef4444', '#3b82f6', '#22c55e', '#a855f7', '#ec4899', '#14b8a6'];
 
@@ -65,9 +77,18 @@
           const fbdRef = useRef(null);
           const vadRef = useRef(null);
 
+          useEffect(() => {
+            const timer = setTimeout(() => {
+              if (window.MathJax && window.MathJax.typesetPromise) {
+                window.MathJax.typesetPromise().catch((err) => console.log(err));
+              }
+            }, 100);
+            return () => clearTimeout(timer);
+          }, [forces, forceOrder, showNetForce, showVAD, dragging, editingMagnitude, editingAngle]);
+
           const addForce = () => {
             if (!newForce.sub1 || !newForce.sub2 || !newForce.sub3) {
-              alert('Please fill in all three subscripts');
+              alert('You must identify the TYPE of force exerted ON the system BY the object and indicate that using our 3 subscripts');
               return;
             }
             
@@ -119,6 +140,11 @@
 
           const handleMouseUp = () => {
             setDragging(null);
+            setTimeout(() => {
+              if (window.MathJax && window.MathJax.typesetPromise) {
+                window.MathJax.typesetPromise().catch((err) => console.log(err));
+              }
+            }, 50);
           };
 
           const handleDragStart = (e, id) => {
@@ -201,34 +227,24 @@
             
             for (let x = 0; x <= width; x += gridSize) {
               lines.push(
-                <line key={`v${x}`} x1={x} y1={0} x2={x} y2={height} stroke="#e5e7eb" strokeWidth="1" />
+                <line key={'v' + x} x1={x} y1={0} x2={x} y2={height} stroke="#e5e7eb" strokeWidth="1" />
               );
             }
             
             for (let y = 0; y <= height; y += gridSize) {
               lines.push(
-                <line key={`h${y}`} x1={0} y1={y} x2={width} y2={y} stroke="#e5e7eb" strokeWidth="1" />
+                <line key={'h' + y} x1={0} y1={y} x2={width} y2={y} stroke="#e5e7eb" strokeWidth="1" />
               );
             }
             
             return lines;
           };
 
-          const drawArrow = (x1, y1, x2, y2, color, subscripts, smartLabel = false, centerX = 0, centerY = 0, isNetForce = false) => {
+          const drawArrow = (x1, y1, x2, y2, color, subscripts, smartLabel, centerX, centerY, isNetForce, uniqueKey) => {
             const angle = Math.atan2(y2 - y1, x2 - x1);
-            const arrowLength = isNetForce ? 12 : 10;
-            const arrowWidth = isNetForce ? 8 : 6;
+            const arrowLength = isNetForce ? 15 : 12;
+            const arrowAngle = Math.PI / 7;
             const strokeWidth = isNetForce ? 4 : 2;
-
-            // Calculate arrowhead points for filled triangle
-            const tipX = x2;
-            const tipY = y2;
-            const baseX = x2 - arrowLength * Math.cos(angle);
-            const baseY = y2 - arrowLength * Math.sin(angle);
-            const left1X = baseX - arrowWidth * Math.sin(angle);
-            const left1Y = baseY + arrowWidth * Math.cos(angle);
-            const right1X = baseX + arrowWidth * Math.sin(angle);
-            const right1Y = baseY - arrowWidth * Math.cos(angle);
 
             const midX = (x1 + x2) / 2;
             const midY = (y1 + y2) / 2;
@@ -236,7 +252,7 @@
             let labelX, labelY;
             
             if (smartLabel) {
-              const offsetDist = isNetForce ? 30 : 25;
+              const offsetDist = isNetForce ? 45 : 35;
               
               const leftX = midX - offsetDist * Math.sin(angle);
               const leftY = midY + offsetDist * Math.cos(angle);
@@ -254,49 +270,55 @@
                 labelY = rightY;
               }
             } else {
-              const offsetDist = isNetForce ? 30 : 20;
+              const offsetDist = isNetForce ? 35 : 28;
               labelX = midX - offsetDist * Math.sin(angle);
               labelY = midY + offsetDist * Math.cos(angle);
             }
 
+            const latexLabel = isNetForce 
+              ? '\\Sigma \\vec{F}'
+              : '\\vec{F}_{' + subscripts[0] + subscripts[1] + subscripts[2] + '}';
+
             return (
-              <>
-                <line x1={x1} y1={y1} x2={baseX} y2={baseY} stroke={color} strokeWidth={strokeWidth} />
-                <polygon 
-                  points={`${tipX},${tipY} ${left1X},${left1Y} ${right1X},${right1Y}`}
-                  fill={color}
+              <React.Fragment key={uniqueKey}>
+                <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={color} strokeWidth={strokeWidth} />
+                <line 
+                  x1={x2} 
+                  y1={y2} 
+                  x2={x2 - arrowLength * Math.cos(angle - arrowAngle)} 
+                  y2={y2 - arrowLength * Math.sin(angle - arrowAngle)}
                   stroke={color}
-                  strokeWidth="1"
+                  strokeWidth={strokeWidth}
                 />
-                {!isNetForce && <circle cx={tipX} cy={tipY} r="8" fill="transparent" cursor="pointer" />}
-                <text x={labelX} y={labelY} fill={color} fontSize={isNetForce ? "18" : "16"} fontWeight="bold" textAnchor="middle" dominantBaseline="middle" fontFamily="Times New Roman, serif">
-                  {isNetForce ? (
-                    <>
-                      <tspan fontSize="16">Σ</tspan>
-                      <tspan fontStyle="italic">F</tspan>
-                    </>
-                  ) : (
-                    <>
-                      <tspan fontStyle="italic">F</tspan>
-                      <tspan fontSize="11" baselineShift="sub" fontStyle="normal">{subscripts[0]}</tspan>
-                      <tspan fontSize="11" baselineShift="sub" fontStyle="normal">{subscripts[1]}</tspan>
-                      <tspan fontSize="11" baselineShift="sub" fontStyle="normal">{subscripts[2]}</tspan>
-                    </>
-                  )}
-                </text>
-                {/* Vector arrow over F */}
-                {!isNetForce && (
-                  <line 
-                    x1={labelX - 8} 
-                    y1={labelY - 12} 
-                    x2={labelX + 4} 
-                    y2={labelY - 12} 
-                    stroke={color} 
-                    strokeWidth="1.5"
-                    markerEnd="url(#arrowhead-small)"
-                  />
-                )}
-              </>
+                <line 
+                  x1={x2} 
+                  y1={y2} 
+                  x2={x2 - arrowLength * Math.cos(angle + arrowAngle)} 
+                  y2={y2 - arrowLength * Math.sin(angle + arrowAngle)}
+                  stroke={color}
+                  strokeWidth={strokeWidth}
+                />
+                {!isNetForce && <circle cx={x2} cy={y2} r="8" fill="transparent" cursor="pointer" />}
+                <foreignObject 
+                  x={labelX - 50} 
+                  y={labelY - 15} 
+                  width="100" 
+                  height="30" 
+                  style={{ pointerEvents: 'none' }}
+                >
+                  <div xmlns="http://www.w3.org/1999/xhtml" style={{ 
+                    display: 'flex', 
+                    justifyContent: 'center', 
+                    alignItems: 'center',
+                    color: color,
+                    fontWeight: 'bold',
+                    fontSize: isNetForce ? '18px' : '16px',
+                    pointerEvents: 'none'
+                  }}>
+                    {'$' + latexLabel + '$'}
+                  </div>
+                </foreignObject>
+              </React.Fragment>
             );
           };
 
@@ -314,11 +336,6 @@
                 onMouseUp={handleMouseUp}
                 onMouseLeave={handleMouseUp}
               >
-                <defs>
-                  <marker id="arrowhead-small" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
-                    <polygon points="0 0, 6 3, 0 6" fill="currentColor" />
-                  </marker>
-                </defs>
                 {drawGrid(500, 500)}
                 
                 {forces.map(force => {
@@ -329,7 +346,7 @@
                   
                   return (
                     <g key={force.id} onMouseDown={(e) => handleMouseDown(e, force.id, 'fbd')}>
-                      {drawArrow(centerX, centerY, endX, endY, force.color, force.subscripts)}
+                      {drawArrow(centerX, centerY, endX, endY, force.color, force.subscripts, false, 0, 0, false, 'fbd-' + force.id)}
                     </g>
                   );
                 })}
@@ -340,24 +357,6 @@
           };
 
           const renderVAD = () => {
-            if (!showVAD) {
-              return (
-                <div style={{ 
-                  width: '500px', 
-                  height: '500px', 
-                  border: '1px solid #ccc', 
-                  background: '#f9fafb',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: '#666',
-                  fontSize: '18px'
-                }}>
-                  Force Vector Addition Diagram Hidden
-                </div>
-              );
-            }
-
             const canvasWidth = 500;
             const canvasHeight = 500;
             const orderedForces = forceOrder.map(id => forces.find(f => f.id === id)).filter(f => f);
@@ -391,6 +390,23 @@
 
             const labelCenterX = canvasWidth / 2;
             const labelCenterY = canvasHeight / 2;
+
+            const arrows = [];
+            orderedForces.forEach((force, index) => {
+              const rad = (force.angle * Math.PI) / 180;
+              const magPixels = magnitudeToPixels(force.magnitude);
+              const endX = currentX + magPixels * Math.cos(rad);
+              const endY = currentY - magPixels * Math.sin(rad);
+              
+              arrows.push(
+                <g key={force.id} onMouseDown={(e) => handleMouseDown(e, force.id, 'vad')}>
+                  {drawArrow(currentX, currentY, endX, endY, force.color, force.subscripts, true, labelCenterX, labelCenterY, false, 'vad-' + force.id)}
+                </g>
+              );
+              
+              currentX = endX;
+              currentY = endY;
+            });
 
             return (
               <svg 
@@ -433,55 +449,33 @@
                 onMouseUp={handleMouseUp}
                 onMouseLeave={handleMouseUp}
               >
-                <defs>
-                  <marker id="arrowhead-small" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
-                    <polygon points="0 0, 6 3, 0 6" fill="currentColor" />
-                  </marker>
-                </defs>
                 {drawGrid(canvasWidth, canvasHeight)}
                 
-                {orderedForces.map((force, index) => {
-                  const rad = (force.angle * Math.PI) / 180;
-                  const magPixels = magnitudeToPixels(force.magnitude);
-                  const endX = currentX + magPixels * Math.cos(rad);
-                  const endY = currentY - magPixels * Math.sin(rad);
-                  
-                  const arrow = (
-                    <g key={force.id} onMouseDown={(e) => handleMouseDown(e, force.id, 'vad')}>
-                      {drawArrow(currentX, currentY, endX, endY, force.color, force.subscripts, true, labelCenterX, labelCenterY)}
-                    </g>
-                  );
-                  
-                  currentX = endX;
-                  currentY = endY;
-                  
-                  return arrow;
-                })}
+                {arrows}
                 
                 {showNetForce && forces.length > 0 && (
-                  <>
-                    {(() => {
-                      const netForce = calculateNetForce();
-                      if (!netForce.isBalanced) {
-                        return <g>{drawArrow(startX, startY, currentX, currentY, '#f97316', [], true, labelCenterX, labelCenterY, true)}</g>;
-                      } else {
-                        return (
-                          <text 
-                            x={30} 
-                            y={30} 
-                            fill="#22c55e" 
-                            fontSize="20" 
-                            fontWeight="bold" 
-                            textAnchor="start" 
-                            dominantBaseline="hanging"
-                            fontFamily="Times New Roman, serif"
-                          >
-                            Forces Balanced!
-                          </text>
-                        );
-                      }
-                    })()}
-                  </>
+                  (() => {
+                    const netForce = calculateNetForce();
+                    if (!netForce.isBalanced) {
+                      return <g key="net-force">{drawArrow(startX, startY, currentX, currentY, '#f97316', [], true, labelCenterX, labelCenterY, true, 'net')}</g>;
+                    } else {
+                      return (
+                        <text 
+                          key="balanced"
+                          x={30} 
+                          y={30} 
+                          fill="#22c55e" 
+                          fontSize="20" 
+                          fontWeight="bold" 
+                          textAnchor="start" 
+                          dominantBaseline="hanging"
+                          fontFamily="Times New Roman, serif"
+                        >
+                          Forces Balanced!
+                        </text>
+                      );
+                    }
+                  })()
                 )}
               </svg>
             );
@@ -518,33 +512,30 @@
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '10px', marginBottom: '10px' }}>
                   <div>
                     <label style={{ display: 'block', marginBottom: '5px', fontSize: '14px' }}>
-                      Angle (°)
+                      Direction (°)
                       <span className="angle-help" style={{ marginLeft: '4px', cursor: 'help', color: '#3b82f6', fontWeight: 'bold' }}>
                         ℹ️
                         <div className="angle-popup">
-                          <svg width="180" height="180" viewBox="0 0 180 180">
-                            <circle cx="90" cy="90" r="70" fill="none" stroke="#000" strokeWidth="3"/>
-                            <line x1="90" y1="90" x2="160" y2="90" stroke="#000" strokeWidth="2" markerEnd="url(#arrow)"/>
-                            <line x1="90" y1="90" x2="90" y2="20" stroke="#000" strokeWidth="2"/>
-                            <line x1="90" y1="90" x2="20" y2="90" stroke="#000" strokeWidth="2"/>
-                            <line x1="90" y1="90" x2="90" y2="160" stroke="#000" strokeWidth="2"/>
-                            <line x1="90" y1="90" x2="140" y2="40" stroke="#000" strokeWidth="1" strokeDasharray="2,2"/>
-                            <line x1="90" y1="90" x2="40" y2="40" stroke="#000" strokeWidth="1" strokeDasharray="2,2"/>
-                            <line x1="90" y1="90" x2="40" y2="140" stroke="#000" strokeWidth="1" strokeDasharray="2,2"/>
-                            <line x1="90" y1="90" x2="140" y2="140" stroke="#000" strokeWidth="1" strokeDasharray="2,2"/>
-                            <text x="165" y="95" fontSize="14" fontWeight="bold">0°</text>
-                            <text x="90" y="15" fontSize="14" fontWeight="bold" textAnchor="middle">90°</text>
-                            <text x="10" y="95" fontSize="14" fontWeight="bold">180°</text>
-                            <text x="90" y="175" fontSize="14" fontWeight="bold" textAnchor="middle">270°</text>
-                            <text x="145" y="35" fontSize="12">45°</text>
-                            <text x="30" y="35" fontSize="12">135°</text>
-                            <text x="25" y="150" fontSize="12">225°</text>
-                            <text x="145" y="150" fontSize="12">315°</text>
-                            <defs>
-                              <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
-                                <path d="M0,0 L0,6 L9,3 z" fill="#000" />
-                              </marker>
-                            </defs>
+                          <svg width="200" height="200" viewBox="0 0 200 200">
+                            <circle cx="100" cy="100" r="80" fill="none" stroke="#000" strokeWidth="4"/>
+                            <line x1="100" y1="100" x2="180" y2="100" stroke="#000" strokeWidth="2"/>
+                            <line x1="100" y1="100" x2="100" y2="20" stroke="#000" strokeWidth="2"/>
+                            <line x1="100" y1="100" x2="20" y2="100" stroke="#000" strokeWidth="2"/>
+                            <line x1="100" y1="100" x2="100" y2="180" stroke="#000" strokeWidth="2"/>
+                            <line x1="100" y1="100" x2="156.6" y2="43.4" stroke="#000" strokeWidth="1.5"/>
+                            <line x1="100" y1="100" x2="43.4" y2="43.4" stroke="#000" strokeWidth="1.5"/>
+                            <line x1="100" y1="100" x2="43.4" y2="156.6" stroke="#000" strokeWidth="1.5"/>
+                            <line x1="100" y1="100" x2="156.6" y2="156.6" stroke="#000" strokeWidth="1.5"/>
+                            <polygon points="180,100 170,95 170,105" fill="#000"/>
+                            <text x="190" y="105" fontSize="16" fontWeight="bold">0°</text>
+                            <text x="100" y="12" fontSize="16" fontWeight="bold" textAnchor="middle">90°</text>
+                            <text x="5" y="105" fontSize="16" fontWeight="bold">180°</text>
+                            <text x="100" y="195" fontSize="16" fontWeight="bold" textAnchor="middle">270°</text>
+                            <text x="165" y="38" fontSize="14" fontWeight="bold">45°</text>
+                            <text x="25" y="38" fontSize="14" fontWeight="bold">135°</text>
+                            <text x="20" y="165" fontSize="14" fontWeight="bold">225°</text>
+                            <text x="165" y="165" fontSize="14" fontWeight="bold">315°</text>
+                            <text x="195" y="125" fontSize="12">360°</text>
                           </svg>
                         </div>
                       </span>
@@ -614,7 +605,7 @@
                   </div>
                 </div>
                 <div style={{ fontSize: '12px', color: '#666' }}>
-                  Drag arrowheads to adjust magnitude (not direction - edit angle to change direction).
+                  Drag arrowheads to adjust magnitude (not direction - edit direction to change angle).
                 </div>
               </div>
 
@@ -627,6 +618,9 @@
                     {forceOrder.map((id, index) => {
                       const force = forces.find(f => f.id === id);
                       if (!force) return null;
+                      
+                      const latexStr = '\\vec{F}_{' + force.subscripts[0] + force.subscripts[1] + force.subscripts[2] + '}';
+                      
                       return (
                         <div 
                           key={force.id}
@@ -715,8 +709,7 @@
                             </div>
                           </div>
                           <span style={{ flex: 1, fontFamily: 'Times New Roman, serif' }}>
-                            <span style={{ fontStyle: 'italic', fontWeight: 'bold' }}>F</span>
-                            <sub>{force.subscripts[0]}{force.subscripts[1]}{force.subscripts[2]}</sub>
+                            <span>{'$' + latexStr + '$'}</span>
                             <span> = </span>
                             {editingMagnitude === force.id ? (
                               <input
@@ -865,51 +858,53 @@
                 </div>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: showVAD ? '1fr 1fr' : '1fr', gap: '20px' }}>
                 <div>
                   <h3>Free Body Diagram</h3>
                   {renderFBD()}
                 </div>
-                <div>
-                  <h3>Force Vector Addition Diagram</h3>
-                  {renderVAD()}
-                  {forces.length > 0 && showVAD && (
-                    <div style={{ marginTop: '15px', padding: '12px', background: '#fff3e0', borderRadius: '8px', border: '2px solid #f97316' }}>
-                      <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontWeight: 'bold' }}>
-                        <input
-                          type="checkbox"
-                          checked={showNetForce}
-                          onChange={(e) => setShowNetForce(e.target.checked)}
-                          style={{ width: '18px', height: '18px', cursor: 'pointer' }}
-                        />
-                        <span style={{ color: '#f97316', fontFamily: 'Times New Roman, serif' }}>
-                          Show Sum of all Forces (ΣF)
-                        </span>
-                      </label>
-                      {showNetForce && (
-                        <div style={{ fontSize: '14px', color: '#666', fontFamily: 'Times New Roman, serif', marginTop: '8px' }}>
-                          {(() => {
-                            const netForce = calculateNetForce();
-                            if (netForce.isBalanced) {
-                              return (
-                                <>
-                                  <span style={{ fontStyle: 'italic' }}>Magnitude:</span> ≈ 0 N
-                                </>
-                              );
-                            } else {
-                              return (
-                                <>
-                                  <span style={{ fontStyle: 'italic' }}>Magnitude:</span> {netForce.magnitude.toFixed(2)} N, {' '}
-                                  <span style={{ fontStyle: 'italic' }}>Direction:</span> {netForce.angle.toFixed(1)}°
-                                </>
-                              );
-                            }
-                          })()}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
+                {showVAD && (
+                  <div>
+                    <h3>Force Vector Addition Diagram</h3>
+                    {renderVAD()}
+                    {forces.length > 0 && (
+                      <div style={{ marginTop: '15px', padding: '12px', background: '#fff3e0', borderRadius: '8px', border: '2px solid #f97316' }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontWeight: 'bold' }}>
+                          <input
+                            type="checkbox"
+                            checked={showNetForce}
+                            onChange={(e) => setShowNetForce(e.target.checked)}
+                            style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+                          />
+                          <span style={{ color: '#f97316', fontFamily: 'Times New Roman, serif' }}>
+                            Show Sum of all the Forces (ΣF)
+                          </span>
+                        </label>
+                        {showNetForce && (
+                          <div style={{ fontSize: '14px', color: '#666', fontFamily: 'Times New Roman, serif', marginTop: '8px' }}>
+                            {(() => {
+                              const netForce = calculateNetForce();
+                              if (netForce.isBalanced) {
+                                return (
+                                  <>
+                                    <span style={{ fontStyle: 'italic' }}>Magnitude:</span> ≈ 0 N
+                                  </>
+                                );
+                              } else {
+                                return (
+                                  <>
+                                    <span style={{ fontStyle: 'italic' }}>Magnitude:</span> {netForce.magnitude.toFixed(2)} N, {' '}
+                                    <span style={{ fontStyle: 'italic' }}>Direction:</span> {netForce.angle.toFixed(1)}°
+                                  </>
+                                );
+                              }
+                            })()}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           );

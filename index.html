@@ -489,7 +489,7 @@
                 <h3 style={{ marginTop: 0 }}>Draw a Force Vector</h3>
                 <div style={{ marginBottom: '10px' }}>
                   <label style={{ display: 'block', marginBottom: '5px', fontSize: '14px' }}>Color</label>
-                  <div style={{ display: 'flex', gap: '18px', marginBottom: '10px' }}>
+                  <div style={{ display: 'flex', gap: '8px', marginBottom: '10px' }}>
                     {COLORS.map(color => (
                       <button
                         key={color}
@@ -509,8 +509,8 @@
                     ))}
                   </div>
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '15px', marginBottom: '10px', alignItems: 'end' }}>
-                  <div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '20px', marginBottom: '10px', alignItems: 'end' }}>
+                  <div style={{ paddingRight: '4px' }}>
                     <label style={{ display: 'block', marginBottom: '5px', fontSize: '14px' }}>
                       Direction (degrees)
                       <span className="angle-help" style={{ marginLeft: '4px', cursor: 'help', color: '#3b82f6', fontWeight: 'bold' }}>
@@ -547,7 +547,7 @@
                       style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }}
                     />
                   </div>
-                  <div>
+                  <div style={{ paddingRight: '4px' }}>
                     <label style={{ display: 'block', marginBottom: '5px', fontSize: '14px' }}>Magnitude (newtons)</label>
                     <input
                       type="number"
@@ -556,7 +556,7 @@
                       style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }}
                     />
                   </div>
-                  <div>
+                  <div style={{ paddingRight: '4px' }}>
                     <label style={{ display: 'block', marginBottom: '5px', fontSize: '14px' }}>Subscript 1</label>
                     <input
                       type="text"
@@ -566,7 +566,7 @@
                       placeholder="TYPE of force"
                     />
                   </div>
-                  <div>
+                  <div style={{ paddingRight: '4px' }}>
                     <label style={{ display: 'block', marginBottom: '5px', fontSize: '14px' }}>Subscript 2</label>
                     <input
                       type="text"
@@ -576,7 +576,7 @@
                       placeholder="exerted ON"
                     />
                   </div>
-                  <div>
+                  <div style={{ paddingRight: '4px' }}>
                     <label style={{ display: 'block', marginBottom: '5px', fontSize: '14px' }}>Subscript 3</label>
                     <input
                       type="text"

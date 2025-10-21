@@ -1,0 +1,750 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Free Body & Vector Addition Diagram Generator</title>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useRef } = React;
+
+        const COLORS = ['#ef4444', '#3b82f6', '#22c55e', '#a855f7', '#ec4899', '#14b8a6'];
+
+        const FBDVectorGenerator = () => {
+          const [forces, setForces] = useState([]);
+          const [forceOrder, setForceOrder] = useState([]);
+          const [newForce, setNewForce] = useState({
+            angle: 0,
+            magnitude: 100,
+            sub1: '',
+            sub2: '',
+            sub3: '',
+            color: COLORS[0]
+          });
+          const [dragging, setDragging] = useState(null);
+          const [draggedForce, setDraggedForce] = useState(null);
+          const [editingMagnitude, setEditingMagnitude] = useState(null);
+          const [scale, setScale] = useState(20);
+          const [showNetForce, setShowNetForce] = useState(false);
+          const fbdRef = useRef(null);
+          const vadRef = useRef(null);
+
+          const addForce = () => {
+            if (!newForce.sub1 || !newForce.sub2 || !newForce.sub3) {
+              alert('Please fill in all three subscripts');
+              return;
+            }
+            
+            const force = {
+              id: Date.now(),
+              angle: parseFloat(newForce.angle),
+              magnitude: parseFloat(newForce.magnitude),
+              color: newForce.color,
+              subscripts: [newForce.sub1, newForce.sub2, newForce.sub3]
+            };
+            
+            setForces([...forces, force]);
+            setForceOrder([...forceOrder, force.id]);
+            
+            const currentColorIndex = COLORS.indexOf(newForce.color);
+            const nextColor = COLORS[(currentColorIndex + 1) % COLORS.length];
+            setNewForce({ angle: 0, magnitude: 100, sub1: '', sub2: '', sub3: '', color: nextColor });
+          };
+
+          const removeForce = (id) => {
+            setForces(forces.filter(f => f.id !== id));
+            setForceOrder(forceOrder.filter(fid => fid !== id));
+          };
+
+          const handleMouseDown = (e, forceId, diagramType) => {
+            setDragging({ forceId, diagramType });
+          };
+
+          const handleMouseMove = (e, ref, centerX, centerY) => {
+            if (!dragging || !ref.current) return;
+
+            const rect = ref.current.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            const mouseY = e.clientY - rect.top;
+
+            const dx = mouseX - centerX;
+            const dy = mouseY - centerY;
+            const newMagnitudePixels = Math.sqrt(dx * dx + dy * dy);
+            
+            const cmPerPixel = 40;
+            const newMagnitude = (newMagnitudePixels / cmPerPixel) * scale;
+
+            setForces(forces.map(f => 
+              f.id === dragging.forceId 
+                ? { ...f, magnitude: Math.max(1, newMagnitude) }
+                : f
+            ));
+          };
+
+          const handleMouseUp = () => {
+            setDragging(null);
+          };
+
+          const handleDragStart = (e, id) => {
+            e.stopPropagation();
+            setDraggedForce(id);
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/html', e.currentTarget);
+          };
+
+          const handleDragOver = (e, id) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (draggedForce === null || draggedForce === id) return;
+            
+            const newOrder = [...forceOrder];
+            const draggedIndex = newOrder.indexOf(draggedForce);
+            const targetIndex = newOrder.indexOf(id);
+            
+            if (draggedIndex !== -1 && targetIndex !== -1) {
+              newOrder.splice(draggedIndex, 1);
+              newOrder.splice(targetIndex, 0, draggedForce);
+              setForceOrder(newOrder);
+            }
+          };
+
+          const handleDragEnd = (e) => {
+            e.stopPropagation();
+            setDraggedForce(null);
+          };
+
+          const updateMagnitude = (id, newMag) => {
+            const magnitude = parseFloat(newMag);
+            if (isNaN(magnitude) || magnitude < 0) return;
+            setForces(forces.map(f => f.id === id ? { ...f, magnitude } : f));
+          };
+
+          const updateColor = (id, newColor) => {
+            setForces(forces.map(f => f.id === id ? { ...f, color: newColor } : f));
+          };
+
+          const calculateNetForce = () => {
+            let netX = 0;
+            let netY = 0;
+            
+            forces.forEach(force => {
+              const rad = (force.angle * Math.PI) / 180;
+              netX += force.magnitude * Math.cos(rad);
+              netY += force.magnitude * Math.sin(rad);
+            });
+            
+            const magnitude = Math.sqrt(netX * netX + netY * netY);
+            let angle = (Math.atan2(netY, netX) * 180) / Math.PI;
+            if (angle < 0) angle += 360;
+            
+            const smallestForce = Math.min(...forces.map(f => f.magnitude));
+            const isBalanced = magnitude < 0.02 * smallestForce;
+            
+            return { magnitude, angle, netX, netY, isBalanced };
+          };
+
+          const magnitudeToPixels = (magnitude) => {
+            const cmPerPixel = 40;
+            return (magnitude / scale) * cmPerPixel;
+          };
+
+          const snapToGrid = (value, gridSize = 40) => {
+            return Math.round(value / gridSize) * gridSize;
+          };
+
+          const drawGrid = (width, height) => {
+            const gridSize = 40;
+            const lines = [];
+            
+            for (let x = 0; x <= width; x += gridSize) {
+              lines.push(
+                <line key={`v${x}`} x1={x} y1={0} x2={x} y2={height} stroke="#e5e7eb" strokeWidth="1" />
+              );
+            }
+            
+            for (let y = 0; y <= height; y += gridSize) {
+              lines.push(
+                <line key={`h${y}`} x1={0} y1={y} x2={width} y2={y} stroke="#e5e7eb" strokeWidth="1" />
+              );
+            }
+            
+            return lines;
+          };
+
+          const drawArrow = (x1, y1, x2, y2, color, subscripts, smartLabel = false, centerX = 0, centerY = 0, isNetForce = false) => {
+            const angle = Math.atan2(y2 - y1, x2 - x1);
+            const arrowLength = isNetForce ? 20 : 15;
+            const arrowAngle = Math.PI / 6;
+            const strokeWidth = isNetForce ? 4 : 2;
+
+            const path = `
+              M ${x1} ${y1} 
+              L ${x2} ${y2}
+              M ${x2} ${y2}
+              L ${x2 - arrowLength * Math.cos(angle - arrowAngle)} ${y2 - arrowLength * Math.sin(angle - arrowAngle)}
+              M ${x2} ${y2}
+              L ${x2 - arrowLength * Math.cos(angle + arrowAngle)} ${y2 - arrowLength * Math.sin(angle + arrowAngle)}
+            `;
+
+            const midX = (x1 + x2) / 2;
+            const midY = (y1 + y2) / 2;
+            
+            let labelX, labelY;
+            
+            if (smartLabel) {
+              const offsetDist = isNetForce ? 30 : 25;
+              
+              const leftX = midX - offsetDist * Math.sin(angle);
+              const leftY = midY + offsetDist * Math.cos(angle);
+              const rightX = midX + offsetDist * Math.sin(angle);
+              const rightY = midY - offsetDist * Math.cos(angle);
+              
+              const leftDist = Math.sqrt((leftX - centerX) ** 2 + (leftY - centerY) ** 2);
+              const rightDist = Math.sqrt((rightX - centerX) ** 2 + (rightY - centerY) ** 2);
+              
+              if (leftDist > rightDist) {
+                labelX = leftX;
+                labelY = leftY;
+              } else {
+                labelX = rightX;
+                labelY = rightY;
+              }
+            } else {
+              const offsetDist = isNetForce ? 30 : 20;
+              labelX = midX - offsetDist * Math.sin(angle);
+              labelY = midY + offsetDist * Math.cos(angle);
+            }
+
+            return (
+              <>
+                <path d={path} stroke={color} strokeWidth={strokeWidth} fill="none" />
+                {!isNetForce && <circle cx={x2} cy={y2} r="6" fill="transparent" cursor="pointer" />}
+                <text x={labelX} y={labelY} fill={color} fontSize={isNetForce ? "18" : "16"} fontWeight="bold" textAnchor="middle" dominantBaseline="middle" fontFamily="Times New Roman, serif">
+                  {isNetForce ? (
+                    <>
+                      <tspan fontSize="16">Σ</tspan>
+                      <tspan fontStyle="italic">F</tspan>
+                    </>
+                  ) : (
+                    <>
+                      <tspan fontStyle="italic">F</tspan>
+                      <tspan fontSize="11" baselineShift="sub" fontStyle="normal">{subscripts[0]}</tspan>
+                      <tspan fontSize="11" baselineShift="sub" fontStyle="normal">{subscripts[1]}</tspan>
+                      <tspan fontSize="11" baselineShift="sub" fontStyle="normal">{subscripts[2]}</tspan>
+                    </>
+                  )}
+                </text>
+              </>
+            );
+          };
+
+          const renderFBD = () => {
+            const centerX = snapToGrid(250);
+            const centerY = snapToGrid(250);
+
+            return (
+              <svg 
+                ref={fbdRef}
+                width="500" 
+                height="500" 
+                style={{ border: '1px solid #ccc', background: 'white' }}
+                onMouseMove={(e) => handleMouseMove(e, fbdRef, centerX, centerY)}
+                onMouseUp={handleMouseUp}
+                onMouseLeave={handleMouseUp}
+              >
+                {drawGrid(500, 500)}
+                
+                {forces.map(force => {
+                  const rad = (force.angle * Math.PI) / 180;
+                  const magPixels = magnitudeToPixels(force.magnitude);
+                  const endX = centerX + magPixels * Math.cos(rad);
+                  const endY = centerY - magPixels * Math.sin(rad);
+                  
+                  return (
+                    <g key={force.id} onMouseDown={(e) => handleMouseDown(e, force.id, 'fbd')}>
+                      {drawArrow(centerX, centerY, endX, endY, force.color, force.subscripts)}
+                    </g>
+                  );
+                })}
+                
+                <circle cx={centerX} cy={centerY} r="8" fill="black" />
+              </svg>
+            );
+          };
+
+          const renderVAD = () => {
+            const canvasWidth = 500;
+            const canvasHeight = 500;
+            const orderedForces = forceOrder.map(id => forces.find(f => f.id === id)).filter(f => f);
+
+            let minX = 0, maxX = 0, minY = 0, maxY = 0;
+            let currentX = 0;
+            let currentY = 0;
+            
+            orderedForces.forEach(force => {
+              const rad = (force.angle * Math.PI) / 180;
+              const magPixels = magnitudeToPixels(force.magnitude);
+              currentX += magPixels * Math.cos(rad);
+              currentY -= magPixels * Math.sin(rad);
+              
+              minX = Math.min(minX, currentX);
+              maxX = Math.max(maxX, currentX);
+              minY = Math.min(minY, currentY);
+              maxY = Math.max(maxY, currentY);
+            });
+            
+            const boundingCenterX = (minX + maxX) / 2;
+            const boundingCenterY = (minY + maxY) / 2;
+            
+            const centerX = canvasWidth / 2;
+            const centerY = canvasHeight / 2;
+            const startX = snapToGrid(centerX - boundingCenterX);
+            const startY = snapToGrid(centerY - boundingCenterY);
+            
+            currentX = startX;
+            currentY = startY;
+
+            const labelCenterX = canvasWidth / 2;
+            const labelCenterY = canvasHeight / 2;
+
+            return (
+              <svg 
+                ref={vadRef}
+                width={canvasWidth} 
+                height={canvasHeight} 
+                style={{ border: '1px solid #ccc', background: 'white' }}
+                onMouseMove={(e) => {
+                  if (!dragging) return;
+                  const rect = vadRef.current.getBoundingClientRect();
+                  const mouseX = e.clientX - rect.left;
+                  const mouseY = e.clientY - rect.top;
+                  
+                  let sumX = startX;
+                  let sumY = startY;
+                  for (let i = 0; i < orderedForces.length; i++) {
+                    if (orderedForces[i].id === dragging.forceId) {
+                      const prevX = sumX;
+                      const prevY = sumY;
+                      const dx = mouseX - prevX;
+                      const dy = mouseY - prevY;
+                      const newMagnitudePixels = Math.sqrt(dx * dx + dy * dy);
+                      
+                      const cmPerPixel = 40;
+                      const newMagnitude = (newMagnitudePixels / cmPerPixel) * scale;
+                      
+                      setForces(forces.map(f => 
+                        f.id === dragging.forceId 
+                          ? { ...f, magnitude: Math.max(1, newMagnitude) }
+                          : f
+                      ));
+                      break;
+                    }
+                    const rad = (orderedForces[i].angle * Math.PI) / 180;
+                    const magPixels = magnitudeToPixels(orderedForces[i].magnitude);
+                    sumX += magPixels * Math.cos(rad);
+                    sumY -= magPixels * Math.sin(rad);
+                  }
+                }}
+                onMouseUp={handleMouseUp}
+                onMouseLeave={handleMouseUp}
+              >
+                {drawGrid(canvasWidth, canvasHeight)}
+                
+                {orderedForces.map((force, index) => {
+                  const rad = (force.angle * Math.PI) / 180;
+                  const magPixels = magnitudeToPixels(force.magnitude);
+                  const endX = currentX + magPixels * Math.cos(rad);
+                  const endY = currentY - magPixels * Math.sin(rad);
+                  
+                  const arrow = (
+                    <g key={force.id} onMouseDown={(e) => handleMouseDown(e, force.id, 'vad')}>
+                      {drawArrow(currentX, currentY, endX, endY, force.color, force.subscripts, true, labelCenterX, labelCenterY)}
+                    </g>
+                  );
+                  
+                  currentX = endX;
+                  currentY = endY;
+                  
+                  return arrow;
+                })}
+                
+                {showNetForce && forces.length > 0 && (
+                  <>
+                    {(() => {
+                      const netForce = calculateNetForce();
+                      if (!netForce.isBalanced) {
+                        return <g>{drawArrow(startX, startY, currentX, currentY, '#f97316', [], true, labelCenterX, labelCenterY, true)}</g>;
+                      } else {
+                        return (
+                          <text 
+                            x={30} 
+                            y={30} 
+                            fill="#22c55e" 
+                            fontSize="20" 
+                            fontWeight="bold" 
+                            textAnchor="start" 
+                            dominantBaseline="hanging"
+                            fontFamily="Times New Roman, serif"
+                          >
+                            Forces Balanced!
+                          </text>
+                        );
+                      }
+                    })()}
+                  </>
+                )}
+              </svg>
+            );
+          };
+
+          return (
+            <div style={{ padding: '20px', fontFamily: 'Arial, sans-serif' }}>
+              <h1 style={{ marginBottom: '20px' }}>Free Body & Vector Addition Diagram Generator</h1>
+              
+              <div style={{ marginBottom: '20px', padding: '15px', background: '#f3f4f6', borderRadius: '8px' }}>
+                <h3 style={{ marginTop: 0 }}>Scale Settings</h3>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '15px' }}>
+                  <label style={{ fontSize: '14px' }}>1 cm =</label>
+                  <input
+                    type="number"
+                    value={scale}
+                    onChange={(e) => setScale(Math.max(1, parseFloat(e.target.value) || 1))}
+                    style={{ width: '100px', padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }}
+                  />
+                  <label style={{ fontSize: '14px' }}>N</label>
+                  <span style={{ fontSize: '12px', color: '#666', marginLeft: '10px' }}>
+                    (Grid squares are 1 cm × 1 cm)
+                  </span>
+                </div>
+
+                <h3 style={{ marginTop: '20px', marginBottom: '10px' }}>Add New Force</h3>
+                <div style={{ marginBottom: '10px' }}>
+                  <label style={{ display: 'block', marginBottom: '5px', fontSize: '14px' }}>Color</label>
+                  <div style={{ display: 'flex', gap: '8px', marginBottom: '10px' }}>
+                    {COLORS.map(color => (
+                      <button
+                        key={color}
+                        onClick={() => setNewForce({ ...newForce, color })}
+                        style={{
+                          width: '36px',
+                          height: '36px',
+                          borderRadius: '6px',
+                          background: color,
+                          border: newForce.color === color ? '3px solid #000' : '2px solid #ccc',
+                          cursor: 'pointer',
+                          transition: 'transform 0.1s',
+                          transform: newForce.color === color ? 'scale(1.1)' : 'scale(1)'
+                        }}
+                        title={color}
+                      />
+                    ))}
+                  </div>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '10px', marginBottom: '10px' }}>
+                  <div>
+                    <label style={{ display: 'block', marginBottom: '5px', fontSize: '14px' }}>Angle (°)</label>
+                    <input
+                      type="number"
+                      value={newForce.angle}
+                      onChange={(e) => setNewForce({ ...newForce, angle: e.target.value })}
+                      style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', marginBottom: '5px', fontSize: '14px' }}>Magnitude (N)</label>
+                    <input
+                      type="number"
+                      value={newForce.magnitude}
+                      onChange={(e) => setNewForce({ ...newForce, magnitude: e.target.value })}
+                      style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', marginBottom: '5px', fontSize: '14px' }}>Subscript 1</label>
+                    <input
+                      type="text"
+                      value={newForce.sub1}
+                      onChange={(e) => setNewForce({ ...newForce, sub1: e.target.value })}
+                      style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }}
+                      placeholder="e.g., N"
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', marginBottom: '5px', fontSize: '14px' }}>Subscript 2</label>
+                    <input
+                      type="text"
+                      value={newForce.sub2}
+                      onChange={(e) => setNewForce({ ...newForce, sub2: e.target.value })}
+                      style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }}
+                      placeholder="e.g., on"
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', marginBottom: '5px', fontSize: '14px' }}>Subscript 3</label>
+                    <input
+                      type="text"
+                      value={newForce.sub3}
+                      onChange={(e) => setNewForce({ ...newForce, sub3: e.target.value })}
+                      style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }}
+                      placeholder="e.g., A"
+                    />
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'flex-end' }}>
+                    <button
+                      onClick={addForce}
+                      style={{
+                        width: '100%',
+                        padding: '8px',
+                        background: '#3b82f6',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: 'pointer',
+                        fontWeight: 'bold'
+                      }}
+                    >
+                      Add Force
+                    </button>
+                  </div>
+                </div>
+                <div style={{ fontSize: '12px', color: '#666' }}>
+                  Angle: 0° = right, 90° = up, 180° = left, 270° = down. Drag arrowheads to adjust magnitude.
+                </div>
+              </div>
+
+              <div style={{ marginBottom: '20px' }}>
+                <h3>Current Forces (Drag to reorder for VAD):</h3>
+                {forces.length === 0 ? (
+                  <p style={{ color: '#666' }}>No forces added yet</p>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    {forceOrder.map((id, index) => {
+                      const force = forces.find(f => f.id === id);
+                      if (!force) return null;
+                      return (
+                        <div 
+                          key={force.id}
+                          draggable
+                          onDragStart={(e) => handleDragStart(e, force.id)}
+                          onDragOver={(e) => handleDragOver(e, force.id)}
+                          onDragEnd={handleDragEnd}
+                          style={{ 
+                            padding: '8px 12px', 
+                            background: force.color, 
+                            color: 'white', 
+                            borderRadius: '4px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            cursor: draggedForce === force.id ? 'grabbing' : 'grab',
+                            opacity: draggedForce === force.id ? 0.5 : 1,
+                            border: '2px solid transparent',
+                            transition: 'opacity 0.2s',
+                            position: 'relative'
+                          }}
+                        >
+                          <span style={{ fontSize: '18px', userSelect: 'none' }}>⋮⋮</span>
+                          <div 
+                            style={{ position: 'relative' }}
+                            onMouseEnter={(e) => {
+                              const picker = e.currentTarget.querySelector('.color-picker');
+                              if (picker) picker.style.display = 'flex';
+                            }}
+                            onMouseLeave={(e) => {
+                              const picker = e.currentTarget.querySelector('.color-picker');
+                              if (picker) picker.style.display = 'none';
+                            }}
+                          >
+                            <button
+                              onClick={(e) => e.stopPropagation()}
+                              style={{
+                                width: '24px',
+                                height: '24px',
+                                borderRadius: '4px',
+                                background: 'rgba(255,255,255,0.3)',
+                                border: '2px solid rgba(255,255,255,0.5)',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                fontSize: '12px'
+                              }}
+                            >
+                              🎨
+                            </button>
+                            <div
+                              className="color-picker"
+                              style={{
+                                display: 'none',
+                                position: 'absolute',
+                                top: '30px',
+                                left: '0',
+                                background: 'white',
+                                padding: '8px',
+                                borderRadius: '6px',
+                                boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+                                gap: '6px',
+                                zIndex: 1000,
+                                flexWrap: 'wrap',
+                                width: '140px'
+                              }}
+                            >
+                              {COLORS.map(color => (
+                                <button
+                                  key={color}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    updateColor(force.id, color);
+                                  }}
+                                  style={{
+                                    width: '28px',
+                                    height: '28px',
+                                    borderRadius: '4px',
+                                    background: color,
+                                    border: force.color === color ? '3px solid #000' : '1px solid #ccc',
+                                    cursor: 'pointer'
+                                  }}
+                                />
+                              ))}
+                            </div>
+                          </div>
+                          <span style={{ flex: 1, fontFamily: 'Times New Roman, serif' }}>
+                            <span style={{ fontStyle: 'italic', fontWeight: 'bold' }}>F</span>
+                            <sub>{force.subscripts[0]}{force.subscripts[1]}{force.subscripts[2]}</sub>
+                            <span> = </span>
+                            {editingMagnitude === force.id ? (
+                              <input
+                                type="number"
+                                value={force.magnitude}
+                                onChange={(e) => updateMagnitude(force.id, e.target.value)}
+                                onBlur={() => setEditingMagnitude(null)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    setEditingMagnitude(null);
+                                    e.target.blur();
+                                  }
+                                }}
+                                onClick={(e) => e.stopPropagation()}
+                                autoFocus
+                                style={{
+                                  width: '70px',
+                                  padding: '2px 4px',
+                                  border: 'none',
+                                  borderRadius: '3px',
+                                  fontFamily: 'Times New Roman, serif',
+                                  fontSize: '14px',
+                                  color: '#000',
+                                  background: '#fff'
+                                }}
+                              />
+                            ) : (
+                              <span 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setEditingMagnitude(force.id);
+                                }}
+                                style={{ 
+                                  cursor: 'pointer', 
+                                  textDecoration: 'underline',
+                                  padding: '2px 4px',
+                                  borderRadius: '3px',
+                                  background: 'rgba(255,255,255,0.2)'
+                                }}
+                              >
+                                {Math.round(force.magnitude * 100) / 100} N
+                              </span>
+                            )}
+                            <span>, {force.angle}°</span>
+                          </span>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              removeForce(force.id);
+                            }}
+                            style={{
+                              background: 'rgba(0,0,0,0.2)',
+                              border: 'none',
+                              color: 'white',
+                              padding: '4px 8px',
+                              borderRadius: '3px',
+                              cursor: 'pointer',
+                              fontSize: '16px'
+                            }}
+                          >
+                            ×
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+                <div>
+                  <h3>Free Body Diagram</h3>
+                  {renderFBD()}
+                </div>
+                <div>
+                  <h3>Vector Addition Diagram</h3>
+                  {renderVAD()}
+                  {forces.length > 0 && (
+                    <div style={{ marginTop: '15px', padding: '12px', background: '#fff3e0', borderRadius: '8px', border: '2px solid #f97316' }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontWeight: 'bold' }}>
+                        <input
+                          type="checkbox"
+                          checked={showNetForce}
+                          onChange={(e) => setShowNetForce(e.target.checked)}
+                          style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+                        />
+                        <span style={{ color: '#f97316', fontFamily: 'Times New Roman, serif' }}>
+                          Show Net Force (ΣF)
+                        </span>
+                      </label>
+                      {showNetForce && (
+                        <div style={{ fontSize: '14px', color: '#666', fontFamily: 'Times New Roman, serif', marginTop: '8px' }}>
+                          {(() => {
+                            const netForce = calculateNetForce();
+                            if (netForce.isBalanced) {
+                              return (
+                                <>
+                                  <span style={{ fontStyle: 'italic' }}>Magnitude:</span> ≈ 0 N
+                                </>
+                              );
+                            } else {
+                              return (
+                                <>
+                                  <span style={{ fontStyle: 'italic' }}>Magnitude:</span> {netForce.magnitude.toFixed(2)} N, {' '}
+                                  <span style={{ fontStyle: 'italic' }}>Direction:</span> {netForce.angle.toFixed(1)}°
+                                </>
+                              );
+                            }
+                          })()}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<FBDVectorGenerator />);
+    </script>
+</body>
+</html>
